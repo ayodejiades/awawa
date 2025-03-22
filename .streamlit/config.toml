@@ -1,0 +1,4 @@
+[server]
+port = 8501
+fileWatcherType = "none"
+maxMessageSize = 1024
