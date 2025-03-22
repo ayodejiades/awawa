@@ -44,25 +44,6 @@ class NewsSentimentAnalyzer:
         # URL encode the query to handle special characters and spaces
         return urllib.parse.quote_plus(query)
         
-    def about_us():
-        st.sidebar.title("About Us")
-        st.sidebar.markdown("""
-        Welcome to the **WanNkan: AI-Powered News Sentiment Analyzer**! This app is designed to help you stay informed by analyzing the sentiment of recent news articles and providing a quick summary.
-    
-        ### How It Works:
-        1. Enter a topic of interest (e.g., technology, politics, sports).  
-        2. The app fetches the latest news articles from Google News RSS.  
-        3. It analyzes the sentiment of each article (Positive, Negative, or Neutral).  
-        4. A summary and a word cloud are generated to give you insights at a glance.  
-    
-        ### Meet the Team:
-        - **Ayodeji Adesegun**: Chief Mathematical Officer (CMO).  
-         
-    
-        ### Contact Us:
-        Have questions or feedback? Reach out to us at [contact@newsanalyzer.com](mailto:contact@newsanalyzer.com).
-        """)
-   
     def fetch_news_from_google_rss(self, num_articles=10):
         """Fetch news articles from Google News RSS feed."""
         with st.spinner(f"Fetching news articles about '{self.topic}'..."):
@@ -279,9 +260,6 @@ def main():
     - Generate concise summaries
     - Create visualizations to help understand the news landscape
     """)
-
-    # Add About Us page to the sidebar
-    about_us()
     
     # Sidebar for user inputs
     with st.sidebar:
