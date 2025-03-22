@@ -27,6 +27,8 @@ import urllib.parse
 nltk.download('vader_lexicon', quiet=True)
 nltk.download('stopwords', quiet=True)
 nltk.download('punkt', quiet=True)
+nltk.download('maxent_ne_chunker', quiet=True)
+nltk.download('words', quiet=True)
 
 class NewsSentimentAnalyzer:
     def __init__(self, topic="technology"):
@@ -41,22 +43,15 @@ class NewsSentimentAnalyzer:
         
     def _sanitize_query(self, query):
         """Sanitize the query for safe search."""
-        # URL encode the query to handle special characters and spaces
         return urllib.parse.quote_plus(query)
         
     def fetch_news_from_google_rss(self, num_articles=10):
         """Fetch news articles from Google News RSS feed."""
         with st.spinner(f"Fetching news articles about '{self.topic}'..."):
-            # Sanitize the topic for the URL
             sanitized_topic = self._sanitize_query(self.topic)
-            
-            # Format the Google News RSS URL with the sanitized topic
             rss_url = f"https://news.google.com/rss/search?q={sanitized_topic}&hl=en-US&gl=US&ceid=US:en"
-            
-            # Parse the RSS feed
             news_feed = feedparser.parse(rss_url)
-            
-            # Process each entry in the feed
+
             for i, entry in enumerate(news_feed.entries[:num_articles]):
                 try:
                     article_data = {
@@ -66,7 +61,7 @@ class NewsSentimentAnalyzer:
                         "published_parsed": entry.published_parsed,
                         "source": entry.source.title if hasattr(entry, 'source') else "Unknown"
                     }
-                    
+
                     # Extract the full text content using newspaper3k
                     article = Article(entry.link)
                     article.download()
@@ -75,17 +70,17 @@ class NewsSentimentAnalyzer:
                     article_data["authors"] = article.authors
                     article_data["publish_date"] = article.publish_date
                     article_data["top_image"] = article.top_image if hasattr(article, 'top_image') else ""
-                    
+
                     # Extract keywords
                     article.nlp()
                     article_data["keywords"] = article.keywords
-                    
+
                     self.articles.append(article_data)
-                    
+
                 except Exception as e:
-                    st.warning(f"Error fetching article: {str(e)}")
+                    st.warning(f"Error fetching article {i + 1}: {str(e)}")
                     continue
-                    
+
             return self.articles
     
     def analyze_sentiment(self):
@@ -137,7 +132,7 @@ class NewsSentimentAnalyzer:
                         article["ai_summary"] = "No text available for summarization."
                     
                 except Exception as e:
-                    st.warning(f"Error generating summary: {str(e)}")
+                    st.warning(f"Error generating summary for article '{article['title']}': {str(e)}")
                     article["ai_summary"] = "Summary generation failed."
                     
             return self.articles
@@ -145,30 +140,33 @@ class NewsSentimentAnalyzer:
     def generate_wordcloud(self):
         """Generate a word cloud from all articles."""
         with st.spinner("Generating word cloud..."):
-            # Combine all article texts
             all_text = ' '.join([article["text"] for article in self.articles])
-            
+
+            if not all_text.strip():
+                st.warning("No text available to generate a word cloud.")
+                return None, None
+
             # Clean and tokenize the text
             all_text = re.sub(r'[^\w\s]', '', all_text.lower())
             tokens = word_tokenize(all_text)
-            
+
             # Remove stopwords
             filtered_tokens = [word for word in tokens if word not in self.stopwords and len(word) > 2]
-            
+
             # Create word frequency dictionary
             word_freq = Counter(filtered_tokens)
-            
+
             # Create and configure the WordCloud object
             wordcloud = WordCloud(
-                width=800, 
-                height=400, 
-                background_color='white', 
+                width=800,
+                height=400,
+                background_color='white',
                 max_words=100,
                 colormap='viridis',
-                contour_width=1, 
+                contour_width=1,
                 contour_color='steelblue'
             ).generate_from_frequencies(word_freq)
-            
+
             # Create a BytesIO object to store the image
             img_bytes = BytesIO()
             plt.figure(figsize=(10, 5))
@@ -178,10 +176,10 @@ class NewsSentimentAnalyzer:
             plt.savefig(img_bytes, format='png')
             plt.close()
             img_bytes.seek(0)
-            
+
             # Convert to base64 for downloading in the web app
             wordcloud_b64 = base64.b64encode(img_bytes.read()).decode()
-            
+
             return wordcloud, wordcloud_b64
     
     def extract_entities(self):
@@ -189,23 +187,23 @@ class NewsSentimentAnalyzer:
         try:
             from nltk import ne_chunk
             from nltk.tag import pos_tag
-            
-            nltk.download('maxent_ne_chunker', quiet=True)
-            nltk.download('words', quiet=True)
-            
+
             entity_counts = Counter()
-            
+
             for article in self.articles:
                 text = article["text"]
+                if not text.strip():
+                    continue
+
                 tokens = word_tokenize(text)
                 tagged = pos_tag(tokens)
                 entities = ne_chunk(tagged)
-                
+
                 for chunk in entities:
                     if hasattr(chunk, 'label'):
                         entity_name = ' '.join([c[0] for c in chunk])
                         entity_counts[entity_name] += 1
-                        
+
             return dict(entity_counts.most_common(20))
         except Exception as e:
             st.warning(f"Error extracting entities: {str(e)}")
@@ -224,9 +222,6 @@ class NewsSentimentAnalyzer:
             
     def export_results(self):
         """Export the analysis results to a JSON file."""
-        output_file = f"{self.topic}_news_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
-        # Create a simplified version for export
         export_data = []
         for article in self.articles:
             export_item = {
@@ -242,6 +237,25 @@ class NewsSentimentAnalyzer:
             export_data.append(export_item)
             
         return json.dumps(export_data, indent=2, ensure_ascii=False)
+
+# About Us Page
+def about_us():
+    st.sidebar.title("About Us")
+    st.sidebar.markdown("""
+    Welcome to the **WanNkan: AI-Powered News Sentiment Analyzer**! This app is designed to help you stay informed by analyzing the sentiment of recent news articles and providing a quick summary.
+
+    ### How It Works:
+    1. Enter a topic of interest (e.g., technology, politics, sports).  
+    2. The app fetches the latest news articles from Google News RSS.  
+    3. It analyzes the sentiment of each article (Positive, Negative, or Neutral).  
+    4. A summary and a word cloud are generated to give you insights at a glance.  
+
+    ### Meet the Team:
+    - **Ayodeji Adesegun**: Chief Mathematical Officer (CMO).  
+     
+    ### Contact Us:
+    Have questions or feedback? Reach out to us at [contact@newsanalyzer.com](mailto:contact@newsanalyzer.com).
+    """)
 
 # Streamlit web application
 def main():
@@ -260,6 +274,9 @@ def main():
     - Generate concise summaries
     - Create visualizations to help understand the news landscape
     """)
+    
+    # Add About Us page to the sidebar
+    about_us()
     
     # Sidebar for user inputs
     with st.sidebar:
