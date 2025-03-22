@@ -1,127 +1,108 @@
-# news_sentiment_analyzer.py
-import asyncio
-import sys
 import feedparser
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
 from newspaper import Article
-from transformers import pipeline
 import pandas as pd
-import json
-import re
-import matplotlib.pyplot as plt
-from wordcloud import WordCloud
-import base64
-from io import BytesIO
 import streamlit as st
 import plotly.express as px
 from collections import Counter
 from textblob import TextBlob
 import urllib.parse
+import re
 
-# Configure event loop policy for Streamlit Cloud
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-else:
-    asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-
-# Download NLTK resources
+# Configure NLTK
 nltk.download('vader_lexicon', quiet=True)
 nltk.download('stopwords', quiet=True)
 nltk.download('punkt', quiet=True)
-nltk.download('maxent_ne_chunker', quiet=True)
-nltk.download('words', quiet=True)
 
-class NewsSentimentAnalyzer:
+class NewsAnalyzer:
     def __init__(self, topic="technology"):
         self.topic = topic
         self.articles = []
-        self.sentiment_analyzer = SentimentIntensityAnalyzer()
-        self.summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-        self.stopwords = set(stopwords.words('english'))
-        self.additional_stopwords = {'said', 'also', 'would', 'could', 'one', 'two', 
-                                    'three', 'new', 'year', 'today', 'says'}
-        self.stopwords.update(self.additional_stopwords)
+        self.analyzer = SentimentIntensityAnalyzer()
+        self.stop_words = set(stopwords.words('english')).union(
+            {'said', 'would', 'could', 'new', 'year', 'today'})
         
-    def _sanitize_query(self, query):
-        return urllib.parse.quote_plus(query)
-        
-    def fetch_news_from_google_rss(self, num_articles=100):
-        with st.spinner(f"Fetching news articles about '{self.topic}'..."):
-            sanitized_topic = self._sanitize_query(self.topic)
-            rss_url = f"https://news.google.com/rss/search?q={sanitized_topic}&hl=en-US&gl=US&ceid=US:en"
+    def _clean_text(self, text):
+        text = re.sub(r'[^\w\s]', '', text.lower())
+        return ' '.join([word for word in word_tokenize(text) 
+                        if word not in self.stop_words and len(word) > 2])
+
+    def fetch_news(self, num_articles=50):
+        try:
+            query = urllib.parse.quote_plus(self.topic)
+            feed = feedparser.parse(f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en")
             
-            try:
-                news_feed = feedparser.parse(rss_url)
-                articles_to_fetch = min(num_articles, len(news_feed.entries))
-                
-                for i, entry in enumerate(news_feed.entries[:articles_to_fetch]):
-                    try:
-                        article_data = {
-                            "title": entry.title,
-                            "link": entry.link,
-                            "published": entry.published,
-                            "source": entry.source.title if hasattr(entry, 'source') else "Unknown"
-                        }
+            for entry in feed.entries[:num_articles]:
+                try:
+                    article = Article(entry.link)
+                    article.download()
+                    article.parse()
+                    self.articles.append({
+                        'title': entry.title,
+                        'text': self._clean_text(article.text),
+                        'source': entry.source.title if hasattr(entry, 'source') else "Unknown",
+                        'link': entry.link,
+                        'published': entry.published
+                    })
+                except Exception as e:
+                    st.warning(f"Skipping article: {str(e)}")
+                    continue
+            return True
+        except Exception as e:
+            st.error(f"News fetch failed: {str(e)}")
+            return False
 
-                        article = Article(entry.link)
-                        article.download()
-                        article.parse()
-                        article_data["text"] = article.text
-                        article.nlp()
-                        article_data["keywords"] = article.keywords
-                        self.articles.append(article_data)
+    def analyze_sentiment(self):
+        for article in self.articles:
+            vs = self.analyzer.polarity_scores(article['text'])
+            article.update({
+                'sentiment': 'Positive' if vs['compound'] >= 0.05 else 
+                            'Negative' if vs['compound'] <= -0.05 else 'Neutral',
+                'sentiment_score': vs['compound'],
+                'polarity': TextBlob(article['text']).sentiment.polarity,
+                'subjectivity': TextBlob(article['text']).sentiment.subjectivity
+            })
 
-                    except Exception as e:
-                        st.warning(f"Error processing article {i+1}: {str(e)}")
-                        continue
-                        
-                return self.articles
-                
-            except Exception as e:
-                st.error(f"Failed to fetch news feed: {str(e)}")
-                return []
-
-    # Keep other class methods the same as previous version...
-
-def about_us():
-    st.sidebar.title("About Us")
-    st.sidebar.markdown("""
-    **AI-Powered News Sentiment Analyzer**
-    
-    ### Core Team:
-    - **Ayodeji Adesegun**: Chief Mathematical Officer (CMO)
-    - **AI Team**: NLP & Machine Learning Experts
-    
-    ### Contact:
-    [contact@newsanalyzer.com](mailto:contact@newsanalyzer.com)
-    """)
-
-# Rest of the functions remain the same as previous version...
-
+# Streamlit App
 def main():
-    st.set_page_config(
-        page_title="News Sentiment Analyzer",
-        page_icon="📰",
-        layout="wide",
-        menu_items={
-            'Get Help': 'https://example.com/help',
-            'Report a bug': "https://example.com/bug",
-            'About': "AI-powered news sentiment analysis tool"
-        }
-    )
+    st.set_page_config(page_title="News Analyzer", layout="wide")
+    st.title("📰 AI News Sentiment Analysis")
     
-    st.title("📰 AI News Sentiment Analyzer")
-    about_us()
-
     with st.sidebar:
-        topic = st.text_input("Enter news topic:", "artificial intelligence")
-        num_articles = st.slider("Number of articles:", 10, 500, 100)
-        analyze_button = st.button("Analyze News", type="primary")
+        topic = st.text_input("Enter topic:", "AI")
+        num_articles = st.slider("Articles to analyze:", 10, 100, 30)
+        if st.button("Analyze News"):
+            with st.spinner("Processing..."):
+                analyzer = NewsAnalyzer(topic)
+                if analyzer.fetch_news(num_articles):
+                    analyzer.analyze_sentiment()
+                    st.session_state.analyzer = analyzer
+                    st.success("Analysis complete!")
+                else:
+                    st.error("Failed to fetch news")
 
-    # Rest of main function remains the same...
+    if 'analyzer' in st.session_state:
+        analyzer = st.session_state.analyzer
+        
+        # Sentiment Summary
+        st.header("Sentiment Overview")
+        sentiment_counts = Counter([a['sentiment'] for a in analyzer.articles])
+        fig = px.pie(values=sentiment_counts.values(), 
+                    names=sentiment_counts.keys(),
+                    color=sentiment_counts.keys(),
+                    color_discrete_map={'Positive':'green', 'Neutral':'orange', 'Negative':'red'})
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Articles Display
+        st.header("Analyzed Articles")
+        for article in analyzer.articles:
+            with st.expander(article['title']):
+                st.markdown(f"**{article['sentiment']}** ({article['sentiment_score']:.2f})")
+                st.caption(f"Source: {article['source']} | Published: {article['published']}")
+                st.write(article['text'][:500] + "...")
+                st.markdown(f"[Read full article]({article['link']})")
 
 if __name__ == "__main__":
     main()
