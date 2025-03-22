@@ -1,0 +1,11 @@
+newspaper3k
+nltk
+feedparser
+wordcloud
+streamlit
+transformers
+torch
+pandas
+matplotlib
+plotly
+textblob
