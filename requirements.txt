@@ -9,3 +9,4 @@ pandas
 matplotlib
 plotly
 textblob
+lxml_html_clean
