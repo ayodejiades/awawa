@@ -242,7 +242,7 @@ class NewsSentimentAnalyzer:
 def about_us():
     st.sidebar.title("About Us")
     st.sidebar.markdown("""
-    Welcome to the **WanNkan: AI-Powered News Sentiment Analyzer**! This app is designed to help you stay informed by analyzing the sentiment of recent news articles and providing a quick summary.
+    Welcome to the **AI-Powered News Sentiment Analyzer**! This app is designed to help you stay informed by analyzing the sentiment of recent news articles and providing a quick summary.
 
     ### How It Works:
     1. Enter a topic of interest (e.g., technology, politics, sports).  
